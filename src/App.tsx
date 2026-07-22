@@ -1,0 +1,441 @@
+import React, { useState, useEffect } from "react";
+import { BrowserRouter, Routes, Route, useParams } from "react-router-dom";
+import { Header } from "./components/Header";
+import { SettingsModal } from "./components/SettingsModal";
+import { Sidebar } from "./components/Sidebar";
+import { ChatContainer } from "./components/ChatContainer";
+import { HomeGallery } from "./components/HomeGallery";
+import { AppSettings, ChatMessage, DocumentSession, ModularToggles, RagType, ChatSessionItem, PipelineStep } from "./types";
+import { getRagArchById } from "./lib/ragRegistry";
+import { createPreloadedSession } from "./lib/sampleDocs";
+import { executeRagPipeline } from "./lib/ragExecutors";
+import {
+  getAllSessionsFromIDB,
+  saveSessionToIDB,
+  deleteSessionFromIDB,
+  getChatMessagesFromIDB,
+  saveChatMessageToIDB,
+  deleteChatSessionMessagesFromIDB,
+} from "./lib/idb";
+
+const DEFAULT_SETTINGS: AppSettings = {
+  provider: "openai",
+  customApiKey: "",
+  theme: "light",
+};
+
+// Main Workspace layout for any of the 16 RAG routes
+function RagRouteWorkspace({
+  settings,
+  sessions,
+  onNewDocumentUploaded,
+  onDeleteDocumentSession,
+}: {
+  settings: AppSettings;
+  sessions: DocumentSession[];
+  onNewDocumentUploaded: (s: DocumentSession) => void;
+  onDeleteDocumentSession: (id: string) => void;
+}) {
+  const params = useParams();
+  const archId = (params.archId as RagType) || "naive";
+  const arch = getRagArchById(archId);
+
+  // Chat Sessions state
+  const [chatSessions, setChatSessions] = useState<ChatSessionItem[]>(() => {
+    try {
+      const saved = localStorage.getItem(`rag_chat_sessions_${archId}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return [
+      {
+        id: `chat_${archId}_1`,
+        title: "Chat Session 1",
+        createdAt: Date.now(),
+        lastQuestion: "",
+      },
+    ];
+  });
+
+  const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(() => {
+    return chatSessions.length > 0 ? chatSessions[0].id : null;
+  });
+
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [livePipelineSteps, setLivePipelineSteps] = useState<PipelineStep[]>([]);
+  const [modularToggles] = useState<ModularToggles>({
+    queryRewriting: true,
+    reranking: true,
+    conversationMemory: true,
+  });
+
+  // Calculate active document session strictly scoped to current chat session and RAG architecture
+  const currentChatSession = chatSessions.find((cs) => cs.id === activeChatSessionId);
+  const activeDocumentSession =
+    sessions.find(
+      (s) =>
+        (s.id === currentChatSession?.documentSessionId || s.chatSessionId === activeChatSessionId) &&
+        s.ragType === archId
+    ) || null;
+
+  // Re-sync chat sessions when archId route changes
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`rag_chat_sessions_${archId}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setChatSessions(parsed);
+          setActiveChatSessionId(parsed.length > 0 ? parsed[0].id : null);
+          return;
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    const defaultSession = [
+      {
+        id: `chat_${archId}_1`,
+        title: "Chat Session 1",
+        createdAt: Date.now(),
+        lastQuestion: "",
+      },
+    ];
+    setChatSessions(defaultSession);
+    setActiveChatSessionId(defaultSession[0].id);
+  }, [archId]);
+
+  // Persist chatSessions changes to localStorage
+  useEffect(() => {
+    localStorage.setItem(`rag_chat_sessions_${archId}`, JSON.stringify(chatSessions));
+  }, [chatSessions, archId]);
+
+  // Load chat messages when activeChatSessionId changes
+  useEffect(() => {
+    if (activeChatSessionId) {
+      getChatMessagesFromIDB(activeChatSessionId, archId)
+        .then((msgs) => setMessages(msgs))
+        .catch(() => setMessages([]));
+    } else {
+      setMessages([]);
+    }
+  }, [activeChatSessionId, archId]);
+
+  // Handle + New Chat Session
+  const handleNewChatSession = () => {
+    const newId = `chat_${archId}_${Date.now()}`;
+    const newSession: ChatSessionItem = {
+      id: newId,
+      title: `Chat Session ${chatSessions.length + 1}`,
+      createdAt: Date.now(),
+      lastQuestion: "",
+    };
+    setChatSessions((prev) => [newSession, ...prev]);
+    setActiveChatSessionId(newId);
+    setMessages([]);
+  };
+
+  // Handle Delete Chat Session
+  const handleDeleteChatSession = (id: string) => {
+    // Delete any document associated with this chat session
+    const targetChat = chatSessions.find((cs) => cs.id === id);
+    const docsToDelete = sessions.filter(
+      (s) => s.chatSessionId === id || (targetChat && targetChat.documentSessionId === s.id)
+    );
+    docsToDelete.forEach((docToDelete) => {
+      deleteSessionFromIDB(docToDelete.id).catch(console.error);
+      onDeleteDocumentSession(docToDelete.id);
+    });
+
+    // Delete chat messages
+    deleteChatSessionMessagesFromIDB(id, archId).catch(console.error);
+
+    const updated = chatSessions.filter((cs) => cs.id !== id);
+    setChatSessions(updated);
+
+    if (activeChatSessionId === id) {
+      if (updated.length > 0) {
+        setActiveChatSessionId(updated[0].id);
+      } else {
+        setActiveChatSessionId(null);
+        setMessages([]);
+      }
+    }
+  };
+
+  // Handle message submission
+  const handleSendMessage = async (userText: string) => {
+    let docToUse = activeDocumentSession;
+    if (!docToUse) {
+      docToUse = sessions.find((s) => s.ragType === archId) || sessions[0] || null;
+    }
+
+    if (!docToUse) {
+      // Create default sample reference session for this archId if none exists
+      docToUse = {
+        id: `sample_doc_${archId}_${Date.now()}`,
+        fileName: `${arch.name} Standard Reference.txt`,
+        fileSize: 2048,
+        uploadedAt: Date.now(),
+        ragType: archId,
+        tag: "Default Reference Base",
+        chunks: [
+          {
+            id: `chunk_${archId}_1`,
+            documentId: `sample_doc_${archId}`,
+            documentName: `${arch.name} Standard Reference.txt`,
+            text: `This is the default reference knowledge base for ${arch.name}. RAG architecture enables high-precision retrieval over indexed vector chunks.`,
+            embedding: new Array(768).fill(0.01),
+          },
+        ],
+      };
+      onNewDocumentUploaded(docToUse);
+    }
+
+    let targetSessionId = activeChatSessionId;
+    if (!targetSessionId) {
+      const newId = `chat_${archId}_${Date.now()}`;
+      const newSession: ChatSessionItem = {
+        id: newId,
+        title: `Chat Session 1`,
+        createdAt: Date.now(),
+        lastQuestion: userText,
+        documentSessionId: docToUse.id,
+      };
+      setChatSessions([newSession]);
+      setActiveChatSessionId(newId);
+      targetSessionId = newId;
+    } else {
+      setChatSessions((prev) =>
+        prev.map((cs) =>
+          cs.id === targetSessionId
+            ? { ...cs, lastQuestion: userText, documentSessionId: cs.documentSessionId || docToUse.id }
+            : cs
+        )
+      );
+    }
+
+    const userMessage: ChatMessage = {
+      id: `msg_user_${Date.now()}`,
+      role: "user",
+      content: userText,
+      timestamp: Date.now(),
+    };
+
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
+    saveChatMessageToIDB(targetSessionId, archId, userMessage);
+
+    setIsGenerating(true);
+    setLivePipelineSteps([]);
+
+    try {
+      const result = await executeRagPipeline(
+        archId,
+        userText,
+        docToUse,
+        sessions.filter((s) => s.chatSessionId === targetSessionId || s.id === docToUse.id),
+        settings,
+        messages,
+        modularToggles,
+        (step) => {
+          setLivePipelineSteps((prev) => [...prev, step]);
+        }
+      );
+
+      const assistantMessage: ChatMessage = {
+        id: `msg_assistant_${Date.now()}`,
+        role: "assistant",
+        content: result.answer,
+        timestamp: Date.now(),
+        pipelineTrace: result.pipelineTrace,
+      };
+
+      setMessages([...updatedMessages, assistantMessage]);
+      saveChatMessageToIDB(targetSessionId, archId, assistantMessage);
+    } catch (err: any) {
+      const errorMessage: ChatMessage = {
+        id: `msg_error_${Date.now()}`,
+        role: "assistant",
+        content: `⚠️ Error executing ${arch.name}: ${err?.message || "Unknown pipeline execution failure."}`,
+        timestamp: Date.now(),
+        isError: true,
+      };
+      setMessages([...updatedMessages, errorMessage]);
+      saveChatMessageToIDB(targetSessionId, archId, errorMessage);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // Handle document upload and post confirmation message into active chat
+  const handleDocumentUploaded = (newSession: DocumentSession) => {
+    let targetSessionId = activeChatSessionId;
+    if (!targetSessionId) {
+      const newId = `chat_${archId}_${Date.now()}`;
+      const newChat: ChatSessionItem = {
+        id: newId,
+        title: "Chat Session 1",
+        createdAt: Date.now(),
+        lastQuestion: `Attached ${newSession.fileName}`,
+        documentSessionId: newSession.id,
+      };
+      setChatSessions([newChat]);
+      setActiveChatSessionId(newId);
+      targetSessionId = newId;
+    } else {
+      setChatSessions((prev) =>
+        prev.map((cs) =>
+          cs.id === targetSessionId
+            ? { ...cs, documentSessionId: newSession.id, lastQuestion: `Attached ${newSession.fileName}` }
+            : cs
+        )
+      );
+    }
+
+    const sessionToSave: DocumentSession = {
+      ...newSession,
+      chatSessionId: targetSessionId,
+      ragType: archId,
+    };
+
+    onNewDocumentUploaded(sessionToSave);
+
+    const docMessage: ChatMessage = {
+      id: `msg_doc_${Date.now()}`,
+      role: "assistant",
+      content: `📄 **Document Attached & Vector Indexed:** "${newSession.fileName}"\n\n- Chunks Indexed: **${newSession.chunks.length}**\n- File Size: **${(newSession.fileSize / 1024).toFixed(1)} KB**\n\nYou can now ask any questions about this document in this chat session!`,
+      timestamp: Date.now(),
+    };
+
+    setMessages((prev) => [...prev, docMessage]);
+    saveChatMessageToIDB(targetSessionId, archId, docMessage);
+  };
+
+  return (
+    <div className="flex flex-col md:flex-row h-[calc(100vh-4rem)] overflow-hidden">
+      {/* Left Sidebar */}
+      <Sidebar
+        currentRagType={archId}
+        currentRagName={arch.name}
+        chatSessions={chatSessions}
+        activeChatSessionId={activeChatSessionId}
+        onSelectChatSession={(id) => setActiveChatSessionId(id)}
+        onNewChatSession={handleNewChatSession}
+        onDeleteChatSession={handleDeleteChatSession}
+        documentSessions={activeDocumentSession ? [activeDocumentSession] : []}
+        onNewDocumentUploaded={handleDocumentUploaded}
+      />
+
+      {/* Main Center Chat UI */}
+      <main className="flex-1 flex flex-col h-full overflow-hidden p-3 sm:p-4">
+        <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col">
+          <ChatContainer
+            ragType={archId}
+            ragName={arch.name}
+            ragCategory={arch.category}
+            messages={messages}
+            isGenerating={isGenerating}
+            livePipelineSteps={livePipelineSteps}
+            onSendMessage={handleSendMessage}
+            documentName={activeDocumentSession?.fileName}
+            onNewDocumentUploaded={handleDocumentUploaded}
+          />
+        </div>
+      </main>
+    </div>
+  );
+}
+
+export default function App() {
+  const [settings, setSettings] = useState<AppSettings>(() => {
+    try {
+      const saved = localStorage.getItem("rag_showcase_settings");
+      return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
+    } catch {
+      return DEFAULT_SETTINGS;
+    }
+  });
+
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [sessions, setSessions] = useState<DocumentSession[]>([]);
+
+  // Apply dark mode class to root html element
+  useEffect(() => {
+    if (settings.theme === "dark") {
+      document.documentElement.classList.add("dark");
+      document.documentElement.style.colorScheme = "dark";
+    } else {
+      document.documentElement.classList.remove("dark");
+      document.documentElement.style.colorScheme = "light";
+    }
+    localStorage.setItem("rag_showcase_settings", JSON.stringify(settings));
+  }, [settings]);
+
+  // Load IndexedDB document sessions on startup (empty by default)
+  useEffect(() => {
+    getAllSessionsFromIDB().then((loaded) => {
+      setSessions(loaded || []);
+    });
+  }, []);
+
+  const handleSaveSettings = (newSettings: AppSettings) => {
+    setSettings(newSettings);
+  };
+
+  const handleToggleTheme = () => {
+    setSettings((prev) => ({
+      ...prev,
+      theme: prev.theme === "dark" ? "light" : "dark",
+    }));
+  };
+
+  const handleNewDocumentUploaded = (newSession: DocumentSession) => {
+    saveSessionToIDB(newSession);
+    setSessions((prev) => [newSession, ...prev.filter((s) => s.id !== newSession.id)]);
+  };
+
+  const handleDeleteDocumentSession = (sessionId: string) => {
+    deleteSessionFromIDB(sessionId).catch(console.error);
+    setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+  };
+
+  return (
+    <BrowserRouter>
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors">
+        <Header
+          settings={settings}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onToggleTheme={handleToggleTheme}
+        />
+
+        <Routes>
+          <Route path="/" element={<HomeGallery />} />
+          <Route
+            path="/rag/:archId"
+            element={
+              <RagRouteWorkspace
+                settings={settings}
+                sessions={sessions}
+                onNewDocumentUploaded={handleNewDocumentUploaded}
+                onDeleteDocumentSession={handleDeleteDocumentSession}
+              />
+            }
+          />
+        </Routes>
+
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          settings={settings}
+          onSaveSettings={handleSaveSettings}
+        />
+      </div>
+    </BrowserRouter>
+  );
+}

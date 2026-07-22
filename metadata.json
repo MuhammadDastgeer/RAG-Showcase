@@ -1,0 +1,6 @@
+{
+  "name": "RAG Chatbot Showcase",
+  "description": "An interactive showcase and testbed for 16 RAG architectures with step-by-step pipeline inspection powered by OpenAI API.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -95,7 +95,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
           const step2: PipelineStep = {
             title: "Multimodal Embeddings Generation",
             type: "multimodal",
-            description: "Generating vector embedding via text-embedding-004...",
+            description: "Generating vector embedding via OpenAI text-embedding-3-small...",
           };
           setUploadPipelineSteps([
             { ...steps[0], description: `Parsed image file (${(fileSize / 1024).toFixed(1)} KB)` },
@@ -157,7 +157,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
       const step3: PipelineStep = {
         title: "Vector Embeddings Generation",
         type: "multimodal",
-        description: `Generating embeddings for ${rawChunks.length} chunks via text-embedding-004...`,
+        description: `Generating embeddings for ${rawChunks.length} chunks via OpenAI text-embedding-3-small...`,
       };
       setUploadPipelineSteps((prev) => [
         { ...prev[0], description: `Extracted ${text.length} characters` },

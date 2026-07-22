@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
+import { GoogleGenAI } from "@google/genai";
 
 dotenv.config();
 
@@ -11,27 +12,20 @@ async function startServer() {
 
   app.use(express.json({ limit: "50mb" }));
 
-  // Helper to get candidate OpenAI API keys (custom key first if present, then env key)
+  const getGeminiApiKey = (customKey?: string): string => {
+    if (customKey && customKey.trim().length > 0 && !customKey.trim().startsWith("sk-")) {
+      return customKey.trim();
+    }
+    return process.env.GEMINI_API_KEY || "";
+  };
+
   const getOpenAIKeys = (customKey?: string): string[] => {
     const keys: string[] = [];
-    if (customKey && customKey.trim().length > 0) {
-      let key = customKey.trim();
-      if (key.startsWith("k-proj-") || key.startsWith("k-")) {
-        key = "s" + key;
-      }
-      keys.push(key);
+    if (customKey && customKey.trim().length > 0 && customKey.trim().startsWith("sk-")) {
+      keys.push(customKey.trim());
     }
     if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.trim().length > 0) {
-      let envKey = process.env.OPENAI_API_KEY.trim();
-      if (envKey.startsWith("k-proj-") || envKey.startsWith("k-")) {
-        envKey = "s" + envKey;
-      }
-      if (!keys.includes(envKey)) {
-        keys.push(envKey);
-      }
-    }
-    if (keys.length === 0) {
-      throw new Error("OPENAI_API_KEY is not configured. Please add OPENAI_API_KEY in Settings or .env file.");
+      keys.push(process.env.OPENAI_API_KEY.trim());
     }
     return keys;
   };
@@ -44,11 +38,12 @@ async function startServer() {
   // Check API keys availability
   app.get("/api/llm/status", (_req, res) => {
     res.json({
+      hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
       hasOpenAIKey: Boolean(process.env.OPENAI_API_KEY),
     });
   });
 
-  // Embedding endpoint using OpenAI
+  // Embedding endpoint using Gemini or OpenAI
   app.post("/api/llm/embed", async (req, res) => {
     try {
       const { text, customApiKey } = req.body;
@@ -56,15 +51,29 @@ async function startServer() {
         return res.status(400).json({ error: "Text string is required" });
       }
 
-      const candidateKeys = getOpenAIKeys(customApiKey);
+      const geminiKey = getGeminiApiKey(customApiKey);
+      if (geminiKey) {
+        try {
+          const ai = new GoogleGenAI({ apiKey: geminiKey });
+          const response = await ai.models.embedContent({
+            model: "text-embedding-004",
+            contents: text,
+          });
+          const resAny = response as any;
+          const embedding = resAny.embedding?.values || resAny.embeddings?.[0]?.values;
+          if (embedding && Array.isArray(embedding)) {
+            return res.json({ embedding });
+          }
+        } catch (geminiErr) {
+          console.warn("Gemini embed error, trying OpenAI fallback:", geminiErr);
+        }
+      }
 
-      let response: Response | null = null;
-      let lastErr: any = null;
-
-      keyLoop: for (const apiKey of candidateKeys) {
-        for (let attempt = 1; attempt <= 2; attempt++) {
+      const openAiKeys = getOpenAIKeys(customApiKey);
+      if (openAiKeys.length > 0) {
+        for (const apiKey of openAiKeys) {
           try {
-            response = await fetch("https://api.openai.com/v1/embeddings", {
+            const response = await fetch("https://api.openai.com/v1/embeddings", {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -75,40 +84,19 @@ async function startServer() {
                 input: text,
               }),
             });
-
             if (response.ok) {
-              break keyLoop;
-            } else {
-              const errData = await response.json().catch(() => ({}));
-              lastErr = new Error(errData.error?.message || `OpenAI Embedding error: ${response.statusText}`);
-              if (response.status === 401 || response.status === 403) {
-                // Invalid key, try next candidate key
-                break;
-              } else if (response.status === 429 || response.status >= 500) {
-                await new Promise((r) => setTimeout(r, attempt * 1000));
-              } else {
-                break;
+              const data = await response.json();
+              if (data.data && data.data[0]?.embedding) {
+                return res.json({ embedding: data.data[0].embedding });
               }
             }
-          } catch (err: any) {
-            lastErr = err;
-            if (attempt < 2) {
-              await new Promise((r) => setTimeout(r, attempt * 1000));
-            }
+          } catch (openAiErr) {
+            console.warn("OpenAI embed attempt failed:", openAiErr);
           }
         }
       }
 
-      if (!response || !response.ok) {
-        throw lastErr || new Error("Failed to generate embedding from OpenAI");
-      }
-
-      const data = await response.json();
-      if (data.data && data.data[0]?.embedding) {
-        return res.json({ embedding: data.data[0].embedding });
-      } else {
-        throw new Error("No embedding returned from OpenAI");
-      }
+      return res.status(500).json({ error: "No working embedding provider available." });
     } catch (error: any) {
       console.error("Embedding API error:", error?.message || error);
       res.status(500).json({
@@ -117,82 +105,124 @@ async function startServer() {
     }
   });
 
-  // Chat completion endpoint using OpenAI
+  // Chat completion endpoint
   app.post("/api/llm/chat", async (req, res) => {
     try {
       const {
         messages = [],
         systemPrompt,
         customApiKey,
-        model = "gpt-4o-mini",
+        model = "gemini-2.5-flash",
         responseMimeType,
         temperature,
-        images = [], // array of base64 images { data: string, mimeType: string }
+        images = [],
       } = req.body;
 
-      const candidateKeys = getOpenAIKeys(customApiKey);
+      const geminiKey = getGeminiApiKey(customApiKey);
+      if (geminiKey) {
+        try {
+          const ai = new GoogleGenAI({ apiKey: geminiKey });
 
-      const formattedMessages: any[] = [];
-      if (systemPrompt) {
-        formattedMessages.push({ role: "system", content: systemPrompt });
+          const contents: any[] = messages.map((m: any) => ({
+            role: m.role === "assistant" || m.role === "model" ? "model" : "user",
+            parts: [{ text: typeof m.content === "string" ? m.content : JSON.stringify(m.content) }],
+          }));
+
+          if (images && images.length > 0 && contents.length > 0) {
+            const lastMsgParts = contents[contents.length - 1].parts;
+            for (const img of images) {
+              const cleanBase64 = img.data.replace(/^data:image\/\w+;base64,/, "");
+              lastMsgParts.unshift({
+                inlineData: {
+                  mimeType: img.mimeType || "image/png",
+                  data: cleanBase64,
+                },
+              });
+            }
+          }
+
+          const config: any = {};
+          if (systemPrompt) {
+            config.systemInstruction = systemPrompt;
+          }
+          if (typeof temperature === "number") {
+            config.temperature = temperature;
+          }
+          if (responseMimeType === "application/json") {
+            config.responseMimeType = "application/json";
+          }
+
+          const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: contents.length > 0 ? contents : [{ role: "user", parts: [{ text: "Hello" }] }],
+            config,
+          });
+
+          return res.json({ text: response.text || "" });
+        } catch (geminiErr: any) {
+          console.warn("Gemini chat error, falling back to OpenAI if key present:", geminiErr?.message || geminiErr);
+        }
       }
 
-      for (let i = 0; i < messages.length; i++) {
-        const msg = messages[i];
-        const isLastMsg = i === messages.length - 1;
+      // OpenAI Fallback
+      const candidateKeys = getOpenAIKeys(customApiKey);
+      if (candidateKeys.length > 0) {
+        const formattedMessages: any[] = [];
+        if (systemPrompt) {
+          formattedMessages.push({ role: "system", content: systemPrompt });
+        }
 
-        if (isLastMsg && images && images.length > 0 && msg.role === "user") {
-          // Multimodal message for OpenAI Vision
-          const contentParts: any[] = [];
-          for (const img of images) {
-            const dataUrl = img.data.startsWith("data:")
-              ? img.data
-              : `data:${img.mimeType || "image/png"};base64,${img.data}`;
-            contentParts.push({
-              type: "image_url",
-              image_url: { url: dataUrl },
+        for (let i = 0; i < messages.length; i++) {
+          const msg = messages[i];
+          const isLastMsg = i === messages.length - 1;
+
+          if (isLastMsg && images && images.length > 0 && msg.role === "user") {
+            const contentParts: any[] = [];
+            for (const img of images) {
+              const dataUrl = img.data.startsWith("data:")
+                ? img.data
+                : `data:${img.mimeType || "image/png"};base64,${img.data}`;
+              contentParts.push({
+                type: "image_url",
+                image_url: { url: dataUrl },
+              });
+            }
+            contentParts.push({ type: "text", text: msg.content || "Analyze this image and context." });
+            formattedMessages.push({
+              role: "user",
+              content: contentParts,
+            });
+          } else {
+            formattedMessages.push({
+              role: msg.role === "user" ? "user" : "assistant",
+              content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
             });
           }
-          contentParts.push({ type: "text", text: msg.content || "Analyze this image and context." });
-          formattedMessages.push({
-            role: "user",
-            content: contentParts,
-          });
-        } else {
-          formattedMessages.push({
-            role: msg.role === "user" ? "user" : "assistant",
-            content: msg.content || "",
-          });
         }
-      }
 
-      const selectedModel = model.includes("gpt") ? model : "gpt-4o-mini";
-      const bodyPayload: any = {
-        model: selectedModel,
-        messages: formattedMessages,
-        temperature: typeof temperature === "number" ? temperature : 0.7,
-      };
+        const selectedModel = model.includes("gpt") ? model : "gpt-4o-mini";
+        const bodyPayload: any = {
+          model: selectedModel,
+          messages: formattedMessages,
+          temperature: typeof temperature === "number" ? temperature : 0.7,
+        };
 
-      if (responseMimeType === "application/json") {
-        bodyPayload.response_format = { type: "json_object" };
-        const hasJsonWord = formattedMessages.some(
-          (m) => typeof m.content === "string" && m.content.toLowerCase().includes("json")
-        );
-        if (!hasJsonWord) {
-          formattedMessages.unshift({
-            role: "system",
-            content: "You are a JSON generator. Respond strictly with a valid JSON object.",
-          });
+        if (responseMimeType === "application/json") {
+          bodyPayload.response_format = { type: "json_object" };
+          const hasJsonWord = formattedMessages.some(
+            (m) => typeof m.content === "string" && m.content.toLowerCase().includes("json")
+          );
+          if (!hasJsonWord) {
+            formattedMessages.unshift({
+              role: "system",
+              content: "You are a JSON generator assistant. Please output your response as a valid JSON object.",
+            });
+          }
         }
-      }
 
-      let response: Response | null = null;
-      let lastErr: any = null;
-
-      keyLoop: for (const apiKey of candidateKeys) {
-        for (let attempt = 1; attempt <= 2; attempt++) {
+        for (const apiKey of candidateKeys) {
           try {
-            response = await fetch("https://api.openai.com/v1/chat/completions", {
+            const response = await fetch("https://api.openai.com/v1/chat/completions", {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -202,35 +232,17 @@ async function startServer() {
             });
 
             if (response.ok) {
-              break keyLoop;
-            } else {
-              const errData = await response.json().catch(() => ({}));
-              lastErr = new Error(errData.error?.message || `OpenAI Chat error (${response.status}): ${response.statusText}`);
-              if (response.status === 401 || response.status === 403) {
-                // Invalid key, try next key
-                break;
-              } else if (response.status === 429 || response.status >= 500) {
-                await new Promise((r) => setTimeout(r, attempt * 1000));
-              } else {
-                break;
-              }
+              const data = await response.json();
+              const textResult = data.choices?.[0]?.message?.content || "";
+              return res.json({ text: textResult });
             }
-          } catch (err: any) {
-            lastErr = err;
-            if (attempt < 2) {
-              await new Promise((r) => setTimeout(r, attempt * 1000));
-            }
+          } catch (openAiErr) {
+            console.warn("OpenAI chat error:", openAiErr);
           }
         }
       }
 
-      if (!response || !response.ok) {
-        throw lastErr || new Error("Failed to generate response from OpenAI");
-      }
-
-      const data = await response.json();
-      const textResult = data.choices?.[0]?.message?.content || "";
-      return res.json({ text: textResult });
+      return res.status(500).json({ error: "Failed to generate AI response. Please ensure API Key is provided or configured." });
     } catch (error: any) {
       console.error("Chat API error:", error?.message || error);
       res.status(500).json({

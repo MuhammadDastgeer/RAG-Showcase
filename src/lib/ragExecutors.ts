@@ -15,6 +15,35 @@ export interface RagResult {
   pipelineTrace: PipelineStep[];
 }
 
+export function parseJsonResponse<T>(raw: string, fallback: T): T {
+  try {
+    if (!raw || typeof raw !== "string") return fallback;
+    let cleaned = raw.trim();
+    if (cleaned.startsWith("```")) {
+      cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+    }
+    const firstBrace = cleaned.indexOf("{");
+    const firstBracket = cleaned.indexOf("[");
+    if (firstBrace !== -1 || firstBracket !== -1) {
+      if (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
+        const lastBracket = cleaned.lastIndexOf("]");
+        if (lastBracket > firstBracket) {
+          cleaned = cleaned.substring(firstBracket, lastBracket + 1);
+        }
+      } else if (firstBrace !== -1) {
+        const lastBrace = cleaned.lastIndexOf("}");
+        if (lastBrace > firstBrace) {
+          cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+        }
+      }
+    }
+    return JSON.parse(cleaned) as T;
+  } catch (err) {
+    console.warn("Failed to parse JSON response:", err, raw);
+    return fallback;
+  }
+}
+
 // Extract graph entities & relations if missing
 export async function extractGraphForDoc(docContent: string, settings?: AppSettings): Promise<GraphData> {
   const prompt = `Extract named entities and core relationships from the following text into JSON format:
@@ -25,10 +54,10 @@ export async function extractGraphForDoc(docContent: string, settings?: AppSetti
 Limit to top 10 most relevant entities and relationships. Text:\n${docContent.slice(0, 3000)}`;
 
   try {
-    const raw = await chatComplete([{ role: "user", content: prompt }], "Extract JSON only.", settings, {
+    const raw = await chatComplete([{ role: "user", content: prompt }], "Extract JSON object only.", settings, {
       responseMimeType: "application/json",
     });
-    const parsed = JSON.parse(raw);
+    const parsed = parseJsonResponse<{ entities: any[]; relationships: any[] }>(raw, { entities: [], relationships: [] });
     return {
       entities: parsed.entities || [],
       relationships: parsed.relationships || [],
@@ -221,10 +250,11 @@ Return a JSON array of objects with "id" (number 0-7) and "score" (0-10 integer 
 
       let rerankedMatches = top8Matches.slice(0, 4);
       try {
-        const rawJson = await chatComplete([{ role: "user", content: rerankPrompt }], "Return valid JSON array.", settings, {
+        const rawJson = await chatComplete([{ role: "user", content: rerankPrompt }], "Return valid JSON object.", settings, {
           responseMimeType: "application/json",
         });
-        const parsed: { id: number; score: number }[] = JSON.parse(rawJson);
+        const parsedRaw = parseJsonResponse<any>(rawJson, []);
+        const parsed: { id: number; score: number }[] = Array.isArray(parsedRaw) ? parsedRaw : (parsedRaw.ranks || []);
         const selectedIndices = parsed.map((item) => item.id);
         const filtered = top8Matches.filter((_, idx) => selectedIndices.includes(idx));
         if (filtered.length > 0) rerankedMatches = filtered;
@@ -344,10 +374,11 @@ Return a JSON array of strings, e.g. ["sub-question 1", "sub-question 2"]`;
 
       let subQueries: string[] = [query];
       try {
-        const rawSub = await chatComplete([{ role: "user", content: decompPrompt }], "Return JSON array of strings.", settings, {
+        const rawSub = await chatComplete([{ role: "user", content: decompPrompt }], "Return JSON object of sub-questions.", settings, {
           responseMimeType: "application/json",
         });
-        const parsed: string[] = JSON.parse(rawSub);
+        const parsedRaw = parseJsonResponse<any>(rawSub, []);
+        const parsed: string[] = Array.isArray(parsedRaw) ? parsedRaw : (parsedRaw.subQueries || []);
         if (Array.isArray(parsed) && parsed.length > 0) subQueries = parsed;
       } catch (e) {
         subQueries = [query];
@@ -423,7 +454,7 @@ Return JSON: {"sufficient": boolean, "nextQuery": "revised search query if insuf
           const rawCheck = await chatComplete([{ role: "user", content: checkPrompt }], "Return JSON only.", settings, {
             responseMimeType: "application/json",
           });
-          checkResult = JSON.parse(rawCheck);
+          checkResult = parseJsonResponse(rawCheck, { sufficient: true, nextQuery: "" });
         } catch (e) {
           checkResult = { sufficient: true, nextQuery: "" };
         }
@@ -617,10 +648,11 @@ Return JSON array of chosen document IDs, e.g. ["${docList[0]?.id || "session_1"
 
       let selectedDocIds: string[] = session ? [session.id] : [];
       try {
-        const rawRoute = await chatComplete([{ role: "user", content: routerPrompt }], "Return JSON array of IDs.", settings, {
+        const rawRoute = await chatComplete([{ role: "user", content: routerPrompt }], "Return JSON object of IDs.", settings, {
           responseMimeType: "application/json",
         });
-        const parsed = JSON.parse(rawRoute);
+        const parsedRaw = parseJsonResponse<any>(rawRoute, []);
+        const parsed: string[] = Array.isArray(parsedRaw) ? parsedRaw : (parsedRaw.selectedDocIds || []);
         if (Array.isArray(parsed) && parsed.length > 0) selectedDocIds = parsed;
       } catch (e) {
         selectedDocIds = session ? [session.id] : [];
@@ -735,7 +767,12 @@ You must solve the user query by outputting JSON at each step:
             settings,
             { responseMimeType: "application/json" }
           );
-          stepJson = JSON.parse(rawAgent);
+          stepJson = parseJsonResponse(rawAgent, {
+            thought: "Finishing response with gathered evidence.",
+            action: "finish",
+            actionInput: "",
+            finalAnswer: "Based on available information, here is the answer.",
+          });
         } catch (e) {
           stepJson = {
             thought: "Finishing response with gathered evidence.",
@@ -804,7 +841,7 @@ Return JSON: {"retrieveNeeded": boolean, "reason": "short explanation"}`;
         const rawDec = await chatComplete([{ role: "user", content: decisionPrompt }], "Return JSON.", settings, {
           responseMimeType: "application/json",
         });
-        decision = JSON.parse(rawDec);
+        decision = parseJsonResponse(rawDec, { retrieveNeeded: chunks.length > 0, reason: "Default decision." });
       } catch (e) {
         decision = { retrieveNeeded: chunks.length > 0, reason: "Document retrieval check." };
       }
@@ -844,7 +881,7 @@ Return JSON: {"grounded": boolean, "unsupportedClaims": ["claim 1"]}`;
         const rawCrit = await chatComplete([{ role: "user", content: critiquePrompt }], "Return JSON.", settings, {
           responseMimeType: "application/json",
         });
-        critique = JSON.parse(rawCrit);
+        critique = parseJsonResponse(rawCrit, { grounded: true, unsupportedClaims: [] });
       } catch (e) {
         critique = { grounded: true, unsupportedClaims: [] };
       }
@@ -886,7 +923,7 @@ Return JSON: {"grade": "correct"|"ambiguous"|"incorrect", "reason": "explanation
           const rawGrade = await chatComplete([{ role: "user", content: gradePrompt }], "Return JSON.", settings, {
             responseMimeType: "application/json",
           });
-          gradeResult = JSON.parse(rawGrade);
+          gradeResult = parseJsonResponse(rawGrade, { grade: "correct", reason: "Standard context evaluation." });
         } catch (e) {
           gradeResult = { grade: "correct", reason: "Standard context evaluation." };
         }
@@ -957,7 +994,7 @@ Return JSON: {"category": "simple"|"single-hop"|"multi-hop", "reason": "explanat
         const rawClass = await chatComplete([{ role: "user", content: classPrompt }], "Return JSON.", settings, {
           responseMimeType: "application/json",
         });
-        const parsed = JSON.parse(rawClass);
+        const parsed = parseJsonResponse<{ category?: string; reason?: string }>(rawClass, {});
         category = parsed.category || category;
         reason = parsed.reason || reason;
       } catch (e) {
@@ -1030,10 +1067,11 @@ Return JSON array of 4 strings, e.g. ["variant 1", "variant 2", "variant 3", "va
       ];
 
       try {
-        const rawVariants = await chatComplete([{ role: "user", content: fusionPrompt }], "Return JSON array.", settings, {
+        const rawVariants = await chatComplete([{ role: "user", content: fusionPrompt }], "Return JSON object.", settings, {
           responseMimeType: "application/json",
         });
-        const parsed = JSON.parse(rawVariants);
+        const parsedRaw = parseJsonResponse<any>(rawVariants, []);
+        const parsed: string[] = Array.isArray(parsedRaw) ? parsedRaw : (parsedRaw.variants || []);
         if (Array.isArray(parsed) && parsed.length >= 2) variants = parsed.slice(0, 4);
       } catch (e) {
         // fallback

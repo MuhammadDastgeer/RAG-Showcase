@@ -175,6 +175,15 @@ async function startServer() {
 
       if (responseMimeType === "application/json") {
         bodyPayload.response_format = { type: "json_object" };
+        const hasJsonWord = formattedMessages.some(
+          (m) => typeof m.content === "string" && m.content.toLowerCase().includes("json")
+        );
+        if (!hasJsonWord) {
+          formattedMessages.unshift({
+            role: "system",
+            content: "You are a JSON generator. Respond strictly with a valid JSON object.",
+          });
+        }
       }
 
       let response: Response | null = null;

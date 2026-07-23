@@ -39,7 +39,7 @@ function fallbackEmbed(text: string, dim = 256): number[] {
 // Generate embedding for text
 export async function embedText(text: string, settings?: AppSettings): Promise<number[]> {
   try {
-    const res = await fetch("/api/llm/embed", {
+    const res = await fetch("/api/embed", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -79,7 +79,7 @@ export async function chatComplete(
   }
 ): Promise<string> {
   try {
-    const res = await fetch("/api/llm/chat", {
+    const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -87,6 +87,7 @@ export async function chatComplete(
         systemPrompt,
         customApiKey: settings?.customApiKey || "",
         provider: "openai",
+        model: "gpt-4o-mini",
         responseMimeType: extraConfig?.responseMimeType,
         responseSchema: extraConfig?.responseSchema,
         temperature: extraConfig?.temperature,

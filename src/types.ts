@@ -75,6 +75,19 @@ export interface PipelineStep {
   details?: any; // JSON, array of chunks, thoughts, scores, etc.
 }
 
+export interface RagMetrics {
+  totalLatencyMs: number;
+  retrievalLatencyMs: number;
+  transformationLatencyMs: number;
+  generationLatencyMs: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  estimatedCost: number; // e.g. in USD
+  retrievedChunkCount: number;
+  ragType: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
@@ -83,6 +96,7 @@ export interface ChatMessage {
   pipelineTrace?: PipelineStep[];
   attachedImages?: string[]; // data URLs
   isError?: boolean;
+  metrics?: RagMetrics;
 }
 
 export interface ModularToggles {

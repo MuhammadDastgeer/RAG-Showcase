@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, useParams } from "react-router-dom";
+import { MessageSquare, BarChart2 } from "lucide-react";
 import { Header } from "./components/Header";
 import { SettingsModal } from "./components/SettingsModal";
 import { Sidebar } from "./components/Sidebar";
 import { ChatContainer } from "./components/ChatContainer";
+import { MetricsDashboard } from "./components/MetricsDashboard";
 import { HomeGallery } from "./components/HomeGallery";
 import { AppSettings, ChatMessage, DocumentSession, ModularToggles, RagType, ChatSessionItem, PipelineStep } from "./types";
 import { getRagArchById } from "./lib/ragRegistry";
@@ -254,6 +256,7 @@ function RagRouteWorkspace({
         content: result.answer,
         timestamp: Date.now(),
         pipelineTrace: result.pipelineTrace,
+        metrics: result.metrics,
       };
 
       setMessages([...updatedMessages, assistantMessage]);
@@ -272,6 +275,8 @@ function RagRouteWorkspace({
       setIsGenerating(false);
     }
   };
+
+  const [workspaceViewMode, setWorkspaceViewMode] = useState<"chat" | "dashboard">("chat");
 
   // Handle document upload and post confirmation message into active chat
   const handleDocumentUploaded = (newSession: DocumentSession) => {
@@ -332,20 +337,71 @@ function RagRouteWorkspace({
         onNewDocumentUploaded={handleDocumentUploaded}
       />
 
-      {/* Main Center Chat UI */}
-      <main className="flex-1 flex flex-col h-full overflow-hidden p-3 sm:p-4">
+      {/* Main Center UI */}
+      <main className="flex-1 flex flex-col h-full overflow-hidden p-3 sm:p-4 gap-3">
+        {/* Top Workspace Navigation Bar */}
+        <div className="flex items-center justify-between gap-2 bg-white dark:bg-slate-900 px-4 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setWorkspaceViewMode("chat")}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                workspaceViewMode === "chat"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Chat & Pipeline Execution</span>
+            </button>
+
+            <button
+              onClick={() => setWorkspaceViewMode("dashboard")}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                workspaceViewMode === "dashboard"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
+              }`}
+            >
+              <BarChart2 className="w-3.5 h-3.5 text-amber-500" />
+              <span>Latency & Token Dashboard</span>
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-extrabold border border-indigo-300/40 dark:border-indigo-700/40">
+                {messages.filter((m) => m.role === "assistant").length}
+              </span>
+            </button>
+          </div>
+
+          <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+            <span className="font-bold text-slate-900 dark:text-white">{arch.name}</span>
+            <span className="text-slate-300 dark:text-slate-700">•</span>
+            <span>{arch.category}</span>
+          </div>
+        </div>
+
+        {/* View Mode Switcher Container */}
         <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col">
-          <ChatContainer
-            ragType={archId}
-            ragName={arch.name}
-            ragCategory={arch.category}
-            messages={messages}
-            isGenerating={isGenerating}
-            livePipelineSteps={livePipelineSteps}
-            onSendMessage={handleSendMessage}
-            documentName={activeDocumentSession?.fileName}
-            onNewDocumentUploaded={handleDocumentUploaded}
-          />
+          {workspaceViewMode === "chat" ? (
+            <ChatContainer
+              ragType={archId}
+              ragName={arch.name}
+              ragCategory={arch.category}
+              messages={messages}
+              isGenerating={isGenerating}
+              livePipelineSteps={livePipelineSteps}
+              onSendMessage={handleSendMessage}
+              documentName={activeDocumentSession?.fileName}
+              onNewDocumentUploaded={handleDocumentUploaded}
+            />
+          ) : (
+            <MetricsDashboard
+              messages={messages}
+              ragType={archId}
+              ragName={arch.name}
+              onSendSampleQuery={(queryText) => {
+                setWorkspaceViewMode("chat");
+                handleSendMessage(queryText);
+              }}
+            />
+          )}
         </div>
       </main>
     </div>

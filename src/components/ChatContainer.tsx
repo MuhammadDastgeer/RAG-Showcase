@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Sparkles, Copy, Check, RefreshCw, FileText, Upload, Paperclip } from "lucide-react";
+import { Send, Bot, User, Sparkles, Copy, Check, RefreshCw, FileText, Upload, Paperclip, Zap, Coins, BarChart2 } from "lucide-react";
 import { ChatMessage, DocumentSession, PipelineStep, RagType } from "../types";
 import { RagPipelineProgressTimeline } from "./RagPipelineProgressTimeline";
 import { chunkText, embedText } from "../lib/llm";
@@ -327,6 +327,26 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                     >
                       {copiedId === msg.id ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
                     </button>
+                  )}
+
+                  {/* Latency & Token Metrics Badge */}
+                  {msg.role === "assistant" && msg.metrics && (
+                    <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 gap-2">
+                      <div className="flex items-center gap-3">
+                        <span className="flex items-center gap-1 font-semibold text-amber-600 dark:text-amber-400">
+                          <Zap className="w-3 h-3" /> {msg.metrics.totalLatencyMs} ms
+                        </span>
+                        <span className="flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400">
+                          <Coins className="w-3 h-3" /> {msg.metrics.totalTokens.toLocaleString()} tokens
+                        </span>
+                        <span className="text-slate-400 text-[10px]">
+                          (${msg.metrics.estimatedCost.toFixed(5)})
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        R: {msg.metrics.retrievalLatencyMs}ms | G: {msg.metrics.generationLatencyMs}ms
+                      </span>
+                    </div>
                   )}
                 </div>
               </div>

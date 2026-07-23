@@ -41,6 +41,7 @@ export const Header: React.FC<HeaderProps> = ({
           <Link
             to="/"
             className="flex items-center gap-2.5 group focus:outline-none"
+            title="Return to Landing Page"
           >
             <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 group-hover:scale-105 transition-transform">
               <Layers className="w-5 h-5" />
@@ -106,7 +107,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Action Controls */}
         <div className="flex items-center gap-2">
           <Link
-            to="/"
+            to="/rag"
             className="p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             title="Home Gallery"
           >

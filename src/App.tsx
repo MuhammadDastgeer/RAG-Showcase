@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { BrowserRouter, Routes, Route, useParams } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useParams, Navigate } from "react-router-dom";
 import { MessageSquare, BarChart2 } from "lucide-react";
 import { Header } from "./components/Header";
 import { SettingsModal } from "./components/SettingsModal";
@@ -7,6 +7,7 @@ import { Sidebar } from "./components/Sidebar";
 import { ChatContainer } from "./components/ChatContainer";
 import { MetricsDashboard } from "./components/MetricsDashboard";
 import { HomeGallery } from "./components/HomeGallery";
+import { LandingPage } from "./components/LandingPage";
 import { AppSettings, ChatMessage, DocumentSession, ModularToggles, RagType, ChatSessionItem, PipelineStep } from "./types";
 import { getRagArchById } from "./lib/ragRegistry";
 import { createPreloadedSession } from "./lib/sampleDocs";
@@ -483,25 +484,99 @@ export default function App() {
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors">
-        <Header
-          settings={settings}
-          onOpenSettings={() => setIsSettingsOpen(true)}
-          onToggleTheme={handleToggleTheme}
-        />
-
         <Routes>
-          <Route path="/" element={<HomeGallery />} />
           <Route
-            path="/rag/:archId"
+            path="/"
             element={
-              <RagRouteWorkspace
-                settings={settings}
-                sessions={sessions}
-                onNewDocumentUploaded={handleNewDocumentUploaded}
-                onDeleteDocumentSession={handleDeleteDocumentSession}
+              <LandingPage
+                activeSection="home"
+                theme={settings.theme}
+                onToggleTheme={handleToggleTheme}
               />
             }
           />
+          <Route
+            path="/home"
+            element={
+              <LandingPage
+                activeSection="home"
+                theme={settings.theme}
+                onToggleTheme={handleToggleTheme}
+              />
+            }
+          />
+          <Route
+            path="/about"
+            element={
+              <LandingPage
+                activeSection="about"
+                theme={settings.theme}
+                onToggleTheme={handleToggleTheme}
+              />
+            }
+          />
+          <Route
+            path="/features"
+            element={
+              <LandingPage
+                activeSection="features"
+                theme={settings.theme}
+                onToggleTheme={handleToggleTheme}
+              />
+            }
+          />
+          <Route
+            path="/architectures"
+            element={
+              <LandingPage
+                activeSection="architectures"
+                theme={settings.theme}
+                onToggleTheme={handleToggleTheme}
+              />
+            }
+          />
+          <Route
+            path="/contact"
+            element={
+              <LandingPage
+                activeSection="contact"
+                theme={settings.theme}
+                onToggleTheme={handleToggleTheme}
+              />
+            }
+          />
+          <Route
+            path="/rag"
+            element={
+              <>
+                <Header
+                  settings={settings}
+                  onOpenSettings={() => setIsSettingsOpen(true)}
+                  onToggleTheme={handleToggleTheme}
+                />
+                <HomeGallery />
+              </>
+            }
+          />
+          <Route
+            path="/rag/:archId"
+            element={
+              <>
+                <Header
+                  settings={settings}
+                  onOpenSettings={() => setIsSettingsOpen(true)}
+                  onToggleTheme={handleToggleTheme}
+                />
+                <RagRouteWorkspace
+                  settings={settings}
+                  sessions={sessions}
+                  onNewDocumentUploaded={handleNewDocumentUploaded}
+                  onDeleteDocumentSession={handleDeleteDocumentSession}
+                />
+              </>
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
 
         <SettingsModal

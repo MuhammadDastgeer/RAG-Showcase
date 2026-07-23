@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Sparkles, Copy, Check, RefreshCw, FileText, Upload, Paperclip, Zap, Coins, BarChart2 } from "lucide-react";
+import { Send, Bot, User, Sparkles, Copy, Check, RefreshCw, FileText, Upload, Paperclip, Zap, Coins, BarChart2, Trash2 } from "lucide-react";
 import { ChatMessage, DocumentSession, PipelineStep, RagType } from "../types";
 import { RagPipelineProgressTimeline } from "./RagPipelineProgressTimeline";
 import { chunkText, embedText } from "../lib/llm";
@@ -15,6 +15,7 @@ interface ChatContainerProps {
   documentName?: string;
   suggestedQuestions?: string[];
   onNewDocumentUploaded?: (session: DocumentSession) => void;
+  onClearChat?: () => void;
 }
 
 export const ChatContainer: React.FC<ChatContainerProps> = ({
@@ -32,6 +33,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     "Summarize the core guidelines or findings.",
   ],
   onNewDocumentUploaded,
+  onClearChat,
 }) => {
   const [input, setInput] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -241,6 +243,23 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
               >
                 <Upload className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Upload File</span>
+              </button>
+            )}
+
+            {/* Clear Chat Button */}
+            {onClearChat && (
+              <button
+                onClick={onClearChat}
+                disabled={isGenerating || messages.length === 0}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-xl border flex items-center gap-1.5 transition-all ${
+                  messages.length > 0
+                    ? "bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/80 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800/80 shadow-2xs"
+                    : "bg-slate-100 dark:bg-slate-800/40 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800 cursor-not-allowed opacity-60"
+                }`}
+                title="Clear chat messages for this session"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Clear Chat</span>
               </button>
             )}
           </div>

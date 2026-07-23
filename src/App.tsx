@@ -170,6 +170,24 @@ function RagRouteWorkspace({
     }
   };
 
+  // Handle Clear Chat Messages for current session ID
+  const handleClearCurrentChat = async () => {
+    if (!activeChatSessionId) return;
+
+    setMessages([]);
+    try {
+      await deleteChatSessionMessagesFromIDB(activeChatSessionId, archId);
+    } catch (e) {
+      console.error("Failed to clear chat session from IndexedDB:", e);
+    }
+
+    setChatSessions((prev) =>
+      prev.map((cs) =>
+        cs.id === activeChatSessionId ? { ...cs, lastQuestion: "" } : cs
+      )
+    );
+  };
+
   // Handle message submission
   const handleSendMessage = async (userText: string) => {
     let docToUse = activeDocumentSession;
@@ -390,6 +408,7 @@ function RagRouteWorkspace({
               onSendMessage={handleSendMessage}
               documentName={activeDocumentSession?.fileName}
               onNewDocumentUploaded={handleDocumentUploaded}
+              onClearChat={handleClearCurrentChat}
             />
           ) : (
             <MetricsDashboard

@@ -125,7 +125,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <aside className="w-full md:w-80 border-r border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/50 flex flex-col h-[calc(100vh-4rem)] overflow-hidden">
+    <aside className="w-full h-full bg-slate-50/80 dark:bg-slate-900/50 flex flex-col overflow-hidden">
       {/* Top Header: New Chat & Full Width Upload File */}
       <div className="p-4 space-y-2.5 border-b border-slate-200 dark:border-slate-800">
         <button

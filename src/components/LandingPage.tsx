@@ -21,6 +21,8 @@ import {
   Share2,
   Sun,
   Moon,
+  Menu,
+  X,
 } from "lucide-react";
 
 interface LandingPageProps {
@@ -37,6 +39,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const navigate = useNavigate();
   const [contactSubmitted, setContactSubmitted] = useState(false);
   const [contactForm, setContactForm] = useState({ name: "", email: "", message: "" });
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const isDark = theme === "dark";
 
@@ -90,7 +93,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </nav>
 
           {/* Actions: Theme Toggle & Get Started */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             {onToggleTheme && (
               <button
                 onClick={onToggleTheme}
@@ -113,13 +116,63 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
             <Link
               to="/rag"
-              className="px-5 py-2.5 rounded-xl font-bold text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30 hover:shadow-indigo-500/50 transition-all flex items-center gap-2 group"
+              className="px-4 sm:px-5 py-2.5 rounded-xl font-bold text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30 hover:shadow-indigo-500/50 transition-all flex items-center gap-2 group"
             >
               <span>Get Started</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
             </Link>
+
+            {/* Mobile Hamburger Menu Toggle */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="p-2 rounded-xl md:hidden text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              aria-label="Toggle Navigation Menu"
+            >
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile Nav Overlay Drawer */}
+        {mobileMenuOpen && (
+          <div className="md:hidden mt-3 pt-3 pb-2 border-t border-slate-200 dark:border-slate-800 space-y-2 flex flex-col text-sm font-semibold">
+            <Link
+              to="/home"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`px-3 py-2 rounded-xl transition-colors ${activeSection === "home" ? "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900"}`}
+            >
+              Home
+            </Link>
+            <Link
+              to="/about"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`px-3 py-2 rounded-xl transition-colors ${activeSection === "about" ? "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900"}`}
+            >
+              About RAG
+            </Link>
+            <Link
+              to="/features"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`px-3 py-2 rounded-xl transition-colors ${activeSection === "features" ? "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900"}`}
+            >
+              Features
+            </Link>
+            <Link
+              to="/architectures"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`px-3 py-2 rounded-xl transition-colors ${activeSection === "architectures" ? "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900"}`}
+            >
+              Architectures
+            </Link>
+            <Link
+              to="/contact"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`px-3 py-2 rounded-xl transition-colors ${activeSection === "contact" ? "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900"}`}
+            >
+              Contact
+            </Link>
+          </div>
+        )}
       </header>
 
       {/* Hero Section */}

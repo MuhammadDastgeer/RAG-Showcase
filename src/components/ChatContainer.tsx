@@ -213,23 +213,23 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50/50 dark:bg-slate-950/40">
       {/* Top Chat Header Bar with RAG Name */}
       {ragName && (
-        <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between shrink-0 shadow-2xs">
-          <div className="flex items-center gap-2.5">
-            <Sparkles className="w-4 h-4 text-indigo-500" />
-            <span className="text-sm font-bold text-slate-900 dark:text-white">{ragName}</span>
+        <div className="px-3 sm:px-5 py-2 sm:py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-wrap items-center justify-between gap-2 shrink-0 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-indigo-500 shrink-0" />
+            <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">{ragName}</span>
             {ragCategory && (
-              <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+              <span className="hidden sm:inline-block text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
                 {ragCategory}
               </span>
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             {documentName && (
-              <div className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-xl">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <FileText className="w-3.5 h-3.5 text-indigo-500" />
-                <span className="truncate max-w-[180px] font-semibold">{documentName}</span>
+              <div className="text-[11px] sm:text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 px-2 sm:px-2.5 py-1 rounded-xl">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                <FileText className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                <span className="truncate max-w-[100px] sm:max-w-[180px] font-semibold">{documentName}</span>
               </div>
             )}
 
@@ -238,7 +238,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isUploading}
-                className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/80 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/80 flex items-center gap-1.5 transition-all"
+                className="text-xs font-semibold px-2.5 sm:px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/80 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/80 flex items-center gap-1.5 transition-all"
                 title="Upload Document File"
               >
                 <Upload className="w-3.5 h-3.5" />
@@ -251,7 +251,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
               <button
                 onClick={onClearChat}
                 disabled={isGenerating || messages.length === 0}
-                className={`text-xs font-semibold px-3 py-1.5 rounded-xl border flex items-center gap-1.5 transition-all ${
+                className={`text-xs font-semibold px-2.5 sm:px-3 py-1.5 rounded-xl border flex items-center gap-1.5 transition-all ${
                   messages.length > 0
                     ? "bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/80 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800/80 shadow-2xs"
                     : "bg-slate-100 dark:bg-slate-800/40 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800 cursor-not-allowed opacity-60"
@@ -259,7 +259,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                 title="Clear chat messages for this session"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Clear Chat</span>
+                <span className="hidden sm:inline">Clear Chat</span>
               </button>
             )}
           </div>
